@@ -1,0 +1,11 @@
+[package]
+name = "struct_packer"
+author = "Jonas Kristoffersen"
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = {version = "1.0.73", features = ["full", "extra-traits"]}
+quote = "1.0.4"
