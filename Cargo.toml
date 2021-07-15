@@ -2,11 +2,17 @@
 name = "struct_packer"
 version = "0.1.0"
 authors = ["Jonas Kristoffersen"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/jonaskris/struct_packer"
+description = "Provides macro for packing a Struct into its StructPacked counterpart, which has all of the original structs fields packed into one unsigned integer. Conversion from Struct to StructPacked and reverse is automatically implemented."
 edition = "2018"
+keywords = ["pack", "struct", "bit", "drawkey", "renderkey"]
 
 [lib]
 proc-macro = true
+path = "src/lib.rs"
 
 [dependencies]
-syn = {version = "1.0.73", features = ["full", "extra-traits"]}
-quote = "1.0.4"
+syn = {version = "1.0.73", features = ["full", "extra-traits", "parsing", "printing"]}
+quote = "1.0.9"
