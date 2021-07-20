@@ -2,10 +2,38 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 
 use quote::quote;
-use syn::{parse_macro_input, AttributeArgs, DeriveInput, spanned};
+use syn::{parse_macro_input, AttributeArgs, DeriveInput};
+use proc_macro2::{Span};
+
+fn primitive_to_size(ty: &syn::Type) -> usize {
+    let last_segment: Option<&syn::PathSegment> = if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
+        segments.last()
+    } else {
+        panic!("Struct_packer does not support non-primitive or compound types!");
+    };
+
+    let last_segment = if let Some(segment) = last_segment {
+        segment
+    } else {
+        panic!("Struct_packer does not support non-primitive or compound types!");
+    };
+
+    match last_segment.ident.to_string().as_str() {
+        "bool" => 1,
+        "char" => 4,
+        "u8" | "i8" => 8,
+        "u16" | "i16" => 16,
+        "u32" | "i32" | "f32" => 32,
+        "u64" | "i64" | "f64" => 64,
+        "u128" | "i128" => 128,
+        "usize" => std::mem::size_of::<usize>(),
+        "isize" => std::mem::size_of::<isize>(),
+        _ => {panic!("Struct_packer does not support non-primitive or compound types!")}
+    }
+}
 
 #[proc_macro_attribute]
-pub fn pack_struct(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Parse args (TODO)
 
     // Parse input
@@ -13,8 +41,6 @@ pub fn pack_struct(args: TokenStream, input: TokenStream) -> TokenStream {
             // TODO: support unnamed fields (tuple structs)
 
     // Write the type/name of data field which holds all the fields in the original struct.
-        // Implement const DATA_BITS which is the number of bits the data takes up.
-        // Implement const DATA_BITS_ROUNDED which si rounded to the nearest 2^x, maximum 128
         // Type should be unsigned integer, with bits being size_sum rounded up to 2^x, maximum u128.
         // Return compile error if size exceeds 128 bits
 
@@ -34,10 +60,8 @@ pub fn pack_struct(args: TokenStream, input: TokenStream) -> TokenStream {
         // Write OriginalStructPacked implementation of PartialEq and PartialOrd
 
 
-
-    // Parse input
+        // Parse input
     let original_struct = parse_macro_input!(input as DeriveInput);
-
     println!("{:#?}", original_struct);
 
         // Create list of syn::Fields's
@@ -50,20 +74,40 @@ pub fn pack_struct(args: TokenStream, input: TokenStream) -> TokenStream {
                     Option::None
                 };
 
-    let fields = match fields {
+    let fields = match &fields {
         Some(fields) => fields,
-        None => unimplemented!()
+        None => {panic!("Couldent find any fields in struct!");}
     };
 
-    let fields_types: Vec<&syn::Type> = fields.iter().map(|field| &field.ty).collect();
+    // Calculate size of packed data
+    let struct_size: usize = fields.iter().map(|field| primitive_to_size(&field.ty)).sum();
+    let mut data_size: usize = usize::pow(2, ((struct_size as f64).ln()/2f64.ln()).ceil() as u32);
 
-    let test = quote!{
+
+    if data_size < 8 {
+        data_size = 8;
+    } else if data_size > 128 {
+        panic!("Fields in struct cant be packed in a unsigned integer! Max bit size of fields is 128, actual: {}", struct_size);
+    }
+    println!("data_size: {}", data_size);
+
+    //let data_field = syn::Ident::new("data: {}", Span::call_site());
+    let data_field_type = syn::Ident::new(&format!("u{}", data_size), Span::call_site());
+
+    //let fields_types: Vec<&syn::Type> = fields.iter().map(|field| &field.ty).collect();
+
+    /*let test = quote!{
         const DATA_SIZE: u8 = #(std::mem::size_of::<#fields_types>())+*;
         const DATA_SIZE_ROUNDED: u8 = u8::pow(2, ceil(log(DATA_SIZE)/log(2)));
-    };
+    };*/
 
+    /*for field_type in fields_types {
+        println!("ty: {:?}", field_type);
+    }*/
 
-    println!("quote: {}", test);
+    //println!("{:#?}", original_struct);
+
+    //println!("quote: {}", test);
 
 
 
@@ -85,11 +129,17 @@ pub fn pack_struct(args: TokenStream, input: TokenStream) -> TokenStream {
         #original_struct
 
         struct SomeStructPacked {
-            #test
+            data: #data_field_type
+        }
+
+        impl SomeStruct {
+            pub fn pack(&self) -> SomeStructPacked {
+                
+            }
         }
     };
 
-    println!("\n\n{}", ret);
+    //println!("\n\n{}", ret);
 
     TokenStream::from(
         ret

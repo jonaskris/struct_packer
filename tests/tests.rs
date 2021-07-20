@@ -3,26 +3,11 @@ use struct_packer::{pack_struct};
 #[test]
 fn pack_unpack_single_u8()
 {
-    enum SomeEnum {
-        VarA(),
-        VarB(u16)
-    }
-
-    /*#[pack_struct]
+    #[pack_struct]
     struct SomeStruct {
         a: u8,
-        e1: SomeEnum,
-        e2: SomeEnum
-    }*/
-
-    static DATA_SIZE : usize = std :: mem :: size_of :: < u8 > () + std :: mem :: size_of :: < SomeEnum > () + std :: mem :: size_of :: < SomeEnum > () ;
-    static DATA_SIZE_ROUNDED : usize = f64::powf(2.0, ((DATA_SIZE as f64).ln() / (2.0f64).ln()).ceil()) as usize;
-    //const DATA_SIZE_ROUNDED : usize = usize :: pow(2f64, ((DATA_SIZE as f64).log() / 2f64.log()).ceil());
-
-    struct SomeStruct { a : u8, e1 : SomeEnum, e2 : SomeEnum }
-    struct SomeStructPacked
-    {
-
+        b: u16,
+        c: u16
     }
 
     //let s: SomeStruct = SomeStruct{a: 15, e1: SomeEnum::VarA(), e2: SomeEnum::VarB(1234)};
