@@ -5,30 +5,36 @@ use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 use proc_macro2::{Span};
 
-fn primitive_to_size(ty: &syn::Type) -> usize {
-    let last_segment: Option<&syn::PathSegment> = if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
-        segments.last()
+fn field_to_ty_ident(ty: &syn::Type) -> Option<&syn::Ident>{
+    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
+        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
+            Some(ident)
+        } else {
+            None
+        }
     } else {
-        panic!("Struct_packer does not support non-primitive or compound types!");
+        None
+    }
+}
+
+fn primitive_to_size(ty: &syn::Type) -> Option<usize> {
+    let ty_ident = if let Some(ident) = field_to_ty_ident(&ty) {
+        ident
+    } else {
+        return None;
     };
 
-    let last_segment = if let Some(segment) = last_segment {
-        segment
-    } else {
-        panic!("Struct_packer does not support non-primitive or compound types!");
-    };
-
-    match last_segment.ident.to_string().as_str() {
-        "bool" => 1,
-        "char" => 4,
-        "u8" | "i8" => 8,
-        "u16" | "i16" => 16,
-        "u32" | "i32" | "f32" => 32,
-        "u64" | "i64" | "f64" => 64,
-        "u128" | "i128" => 128,
-        "usize" => std::mem::size_of::<usize>(),
-        "isize" => std::mem::size_of::<isize>(),
-        _ => {panic!("Struct_packer does not support non-primitive or compound types!")}
+    match ty_ident.to_string().as_str() {
+        "bool" => Some(1),
+        "char" => Some(4),
+        "u8" | "i8" => Some(8),
+        "u16" | "i16" => Some(16),
+        "u32" | "i32" | "f32" => Some(32),
+        "u64" | "i64" | "f64" => Some(64),
+        "u128" | "i128" => Some(128),
+        "usize" => Some(std::mem::size_of::<usize>()),
+        "isize" => Some(std::mem::size_of::<isize>()),
+        _ => None
     }
 }
 
@@ -62,7 +68,7 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
 
         // Parse input
     let original_struct = parse_macro_input!(input as DeriveInput);
-    println!("{:#?}", original_struct);
+    //println!("{:#?}", original_struct);
 
         // Create list of syn::Fields's
     let fields = if let syn::Data::Struct(syn::DataStruct {
@@ -80,7 +86,17 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
     };
 
     // Calculate size of packed data
-    let struct_size: usize = fields.iter().map(|field| primitive_to_size(&field.ty)).sum();
+    let struct_size: usize = fields.iter().map(
+        |field| {
+            let opt = primitive_to_size(&field.ty);
+
+            if let Some(size) = opt {
+                size
+            } else {
+                panic!("Couldent find size of primitive type!");
+            }
+        }
+    ).sum();
     let mut data_size: usize = usize::pow(2, ((struct_size as f64).ln()/2f64.ln()).ceil() as u32);
 
 
@@ -91,55 +107,100 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
     }
     println!("data_size: {}", data_size);
 
-    //let data_field = syn::Ident::new("data: {}", Span::call_site());
     let data_field_type = syn::Ident::new(&format!("u{}", data_size), Span::call_site());
 
-    //let fields_types: Vec<&syn::Type> = fields.iter().map(|field| &field.ty).collect();
 
-    /*let test = quote!{
-        const DATA_SIZE: u8 = #(std::mem::size_of::<#fields_types>())+*;
-        const DATA_SIZE_ROUNDED: u8 = u8::pow(2, ceil(log(DATA_SIZE)/log(2)));
-    };*/
+    let pack_impl = fields.iter().enumerate().map(|(i, field)|
+        {
+            let field_ident = field.ident.as_ref();
+            let field_ident = if let Some(ident) = field_ident {
+                ident
+            } else {
+                panic!("Macro does not support unnamed types!");
+            };
 
-    /*for field_type in fields_types {
-        println!("ty: {:?}", field_type);
-    }*/
+            let ty_size = primitive_to_size(&field.ty);
+            let ty_size = if let Some(integer) = ty_size {
+                integer
+            } else {
+                panic!("Couldent find type size!");
+            };
 
-    //println!("{:#?}", original_struct);
+            eprintln!("{}", ty_size);
 
-    //println!("quote: {}", test);
+            if i == 0{
+                quote! {
+                    packed.data |= self.#field_ident as #data_field_type;
+                }
+            } else {
+                quote! {
+                    packed.data <<= #ty_size;
+                    packed.data |= self.#field_ident as #data_field_type;
+                }
+            }
+        }
+    );
 
+    let unpack_impl = fields.iter().rev().enumerate().map(|(i, field)|
+        {
+            let field_ident = field.ident.as_ref();
+            let field_ident = if let Some(ident) = field_ident {
+                ident
+            } else {
+                panic!("Macro does not support unnamed types!");
+            };
 
+            let ty = &field.ty;
 
-        // Implement const DATA_BITS which is the number of bits the data takes up.
-    /*let c_data_bits = quote!{
-        const DATA_BITS = #( std::mem:size_of<#fields> + )*;
-    };*/
+            let ty_size = primitive_to_size(&field.ty);
+            let ty_size = if let Some(integer) = ty_size {
+                integer
+            } else {
+                panic!("Couldent find type size!");
+            };
 
-    //println!("c_data_bits: {:#?}", c_data_bits);
-        // Implement const DATA_BITS_ROUNDED which si rounded to the nearest 2^x, maximum 128
-
-
-    //println!("{:#?}", original_struct);
-
-
-
+            if i == fields.len() - 1 {
+                quote! {
+                    unpacked.#field_ident |= data_copy as #ty;
+                }
+            } else {
+                quote! {
+                    unpacked.#field_ident |= data_copy as #ty;
+                    data_copy >>= #ty_size;
+                }
+            }
+        }
+    );
 
     let ret = quote!{
         #original_struct
 
+        #[derive(Copy, Clone)]
         struct SomeStructPacked {
             data: #data_field_type
         }
 
         impl SomeStruct {
             pub fn pack(&self) -> SomeStructPacked {
-                
+                let mut packed = SomeStructPacked{data: 0};
+
+                #(#pack_impl)*
+
+                return packed;
+            }
+        }
+
+        impl SomeStructPacked {
+            pub fn unpack(&self) -> SomeStruct {
+                let mut data_copy = self.data;
+                let mut unpacked = SomeStruct::default();
+                #(#unpack_impl)*
+                return unpacked;
             }
         }
     };
 
-    //println!("\n\n{}", ret);
+    eprintln!("\n\n{}", ret);
 
     TokenStream::from(
         ret

@@ -4,14 +4,21 @@ use struct_packer::{pack_struct};
 fn pack_unpack_single_u8()
 {
     #[pack_struct]
+    #[derive(Default, Debug)]
     struct SomeStruct {
         a: u8,
         b: u16,
-        c: u16
+        d: u32
     }
 
-    //let s: SomeStruct = SomeStruct{a: 15, e1: SomeEnum::VarA(), e2: SomeEnum::VarB(1234)};
-    //let s_packed: SomeStructPacked = s.pack();
+    let s: SomeStruct = SomeStruct{a: 15, b: 123, d: 23363};
+    let s_packed: SomeStructPacked = s.pack();
+    let s_unpacked: SomeStruct = s_packed.unpack();
+
+    eprintln!("Before pack: {:?}", s);
+    eprintln!("Packed: {}", s_packed.data);
+    eprintln!("Unpacked: {:?}", s_unpacked);
+
 }
 
 
