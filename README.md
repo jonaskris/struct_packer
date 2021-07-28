@@ -20,6 +20,7 @@ The cost associated with each state change in OpenGL, in decreasing order is as 
   * UBO bindings
   * Vertex bindings
   * Uniform updates
+
 [Source](https://www.youtube.com/watch?v=-bCeNzgiJ8I)
 
 If our software provides 2 render targets, we can describe this as a bool (2 possible values).
