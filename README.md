@@ -41,6 +41,11 @@ struct DrawKey {
   uniform_update_buffer: u8 // Least expensive
 }
 ```
+
+The total bitsize of this struct is 38, which can be packed into a 64 bit unsigned integer. (The next power of 2).
+If the total bitsize is smaller or equal to 32, it would be packed into a 32 bit unsigned integer, or if <= 16; 16 etc..
+Each field is packed into the unsigned integer in order, so render_target will be packed first into the most significant bits, program will be packed into the second most significant bits etc.
+
 The macro defines this new struct and functions:
 
 ```
@@ -60,11 +65,6 @@ impl DrawKeyPacked {
  }
 }
 ```
-
-
-The total bitsize of this struct is 38, which can be packed into a 64 bit unsigned integer. (The next power of 2).
-If the total bitsize is smaller or equal to 32, it would be packed into a 32 bit unsigned integer, or if <= 16; 16 etc..
-Each field is packed into the unsigned integer in order, so render_target will be packed first into the most significant bits, program will be packed into the second most significant bits etc.
 
 The [pack_struct] procedural macro, automatically provides a pack() method which returns a struct of the same name appended by "Packed", so "DrawKeyPacked". DrawKeyPacked has a unpack() method which reverses this process, providing the original struct with the same values from before packing.
 
@@ -96,6 +96,6 @@ pub fn draw_to_screen(objects: &Vec<RenderableObjects>) {
 }
 ```
 
-The reason we dont just implement sorting for DrawKey, is because its WAAAAAY faster to sort unsigned integers. This speed increase is important as sorting the drawkeys and drawing the renderable objects to screen should happen 60+ times each second. 
+The reason we dont just implement sorting for DrawKey, is because its WAAAAAY faster to sort unsigned integers, as it requires only a single comparison. This speed increase is important as sorting the drawkeys and drawing the renderable objects to screen should happen 60+ times each second. 
 
 The definition of the drawkey will also change very often during development as new features are added, which can introduce errors if not careful implementing the packing functionality. The macro automatically defines the packed drawkey only from which field the original drawkey has, and so reduces development time.
