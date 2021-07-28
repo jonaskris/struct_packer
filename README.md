@@ -7,7 +7,7 @@ To draw an object to screen, multiple variables are needed, such as which shader
 
 Theres also the concept of state change cost, where for example changing the shader is one of the most expensive state changes, which material to use is the second most costly state change and so on...
 
-When some state is not common between all objects, we need to prioritize which order to draw the objects, where expensive states should be changed least. To do this, the macro packs each  
+When some state is not common between all objects, we need to prioritize which order to draw the objects, where expensive states should be changed least. To do this, the macro packs each field into the key in order of first-last field to most_significant_bits-least_siginificant_bits in the packed key.
 
 The cost associated with each state change in OpenGL, in decreasing order is as follows:
   * Render target
