@@ -1,14 +1,13 @@
 Work in progress
 
-## Motivation
+## Explanation/Motivation
 In OpenGL theres a concept of "drawkeys" which encapsulates the information needed to draw an object to screen.
 
-To draw an object to screen, multiple variables are needed, such as which shader to use, which mesh to use etc. These are called "states", and objects almost always share some state between them.
+To draw an object to screen, multiple variables are needed, such as which shader to use, which mesh to use etc. These are called "states", and objects almost always share some state between them. Objects should be ordered before drawing, so that adjacent objects share as much state as possible.
 
 Theres also the concept of state change cost, where for example changing the shader is one of the most expensive state changes, which material to use is the second most costly state change and so on...
 
-We want to draw each object based on which states it requires, and minimize switching the most expensive state changes.
-To do this, we can create a drawkey, an unsigned integer, which contains all these state changes in order of how expensive those state changes are.
+When some state is not common between all objects, we need to prioritize which order to draw the objects, where expensive states should be changed least. To do this, the macro packs each  
 
 The cost associated with each state change in OpenGL, in decreasing order is as follows:
   * Render target
@@ -41,6 +40,27 @@ struct DrawKey {
   uniform_update_buffer: u8 // Least expensive
 }
 ```
+The macro defines this new struct and functions:
+
+```
+struct DrawKeyPacked {
+ data: u64
+}
+
+impl DrawKey {
+ pub fn pack() -> DrawKeyPacked {
+  -- Snip --
+ }
+}
+
+impl DrawKeyPacked {
+ pub fn unpack() -> DrawKey {
+  -- Snip --
+ }
+}
+```
+
+
 The total bitsize of this struct is 38, which can be packed into a 64 bit unsigned integer. (The next power of 2).
 If the total bitsize is smaller or equal to 32, it would be packed into a 32 bit unsigned integer, or if <= 16; 16 etc..
 Each field is packed into the unsigned integer in order, so render_target will be packed first into the most significant bits, program will be packed into the second most significant bits etc.
@@ -51,7 +71,7 @@ Here's an example of how this can be used
 ```
 pub fn set_changed_state(current_drawkey: &DrawKey, last_drawkey: Option<&DrawKey>) {
   // Implementation not included.
-  // This function should compare the two drawkeys, if the current_drawkey has some state which is different than last_drawkey, change the appropriate state in OpenGL.
+  // This function should compare each field of the two drawkeys, if the current_drawkey has some state which is different than last_drawkey, change the appropriate state in OpenGL.
   // If last_drawkey is Option(None), just set the state.
 }
 
@@ -75,4 +95,6 @@ pub fn draw_to_screen(objects: &Vec<RenderableObjects>) {
 }
 ```
 
-The reason we dont just implement sorting for DrawKey, is because its WAAAAAY faster to sort unsigned integers. This speed increase is important as sorting the drawkeys and drawing the renderable objects to screen should happen 60+ times each second.
+The reason we dont just implement sorting for DrawKey, is because its WAAAAAY faster to sort unsigned integers. This speed increase is important as sorting the drawkeys and drawing the renderable objects to screen should happen 60+ times each second. 
+
+The definition of the drawkey will also change very often during development as new features are added, which can introduce errors if not careful implementing the packing functionality. The macro automatically defines the packed drawkey only from which field the original drawkey has, and so reduces development time.
