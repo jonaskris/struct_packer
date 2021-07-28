@@ -1,6 +1,6 @@
 Work in progress
 
-#Motivation
+## Motivation
 In OpenGL theres a concept of "drawkeys" which encapsulates the information needed to draw an object to screen.
 
 To draw an object to screen, multiple variables are needed, such as which shader to use, which mesh to use etc. These are called "states", and objects almost always share some state between them.
@@ -30,7 +30,7 @@ In a drawkey, the most expensive state changes are placed in the most significan
 
 When sorted, the array of drawkeys will be ordered in a way where expensive state changes are minimized.
 
-#Example usage
+## Example usage
 ```
 #[pack_struct]
 struct DrawKey {
