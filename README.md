@@ -88,7 +88,7 @@ pub fn draw_to_screen(objects: &Vec<RenderableObjects>) {
   // Compare drawkey to last_drawkey and change state if the state is different to the last_drawkey
   for drawkey_packed in draw_keys.iter().skip(1) {
     let drawkey = drawkey_packed.unpack();
-    set_changed_state(drawkey, last_drawkey);
+    set_changed_state(drawkey, Some(last_drawkey));
     last_drawkey = drawkey;
   }
   
