@@ -78,7 +78,7 @@ pub fn set_changed_state(current_drawkey: &DrawKey, last_drawkey: Option<&DrawKe
 
 pub fn draw_to_screen(objects: &Vec<RenderableObjects>) {
   // Create and sort drawkeys
-  let mut draw_keys: Vec<DrawKeyPacked> = objects.iter().map(|object| object.pack()).collect();
+  let mut draw_keys: Vec<DrawKeyPacked> = objects.iter().map(|object| object.drawkey.pack()).collect();
   draw_keys.sort();
   
   // Set the first drawkey and its state
