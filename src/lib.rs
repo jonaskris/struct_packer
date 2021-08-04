@@ -5,6 +5,42 @@ use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 use proc_macro2::{Span};
 
+fn ty_is_float(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
+        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
+            ident.to_string().contains('f')
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+fn ty_is_integer(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
+        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
+            ident.to_string().contains('i')
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+fn ty_is_char(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
+        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
+            ident.to_string().contains("char")
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
 fn field_to_ty_ident(ty: &syn::Type) -> Option<&syn::Ident>{
     if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
         if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
@@ -26,10 +62,9 @@ fn primitive_to_size(ty: &syn::Type) -> Option<usize> {
 
     match ty_ident.to_string().as_str() {
         "bool" => Some(1),
-        "char" => Some(4),
         "u8" | "i8" => Some(8),
         "u16" | "i16" => Some(16),
-        "u32" | "i32" | "f32" => Some(32),
+        "char" | "u32" | "i32" | "f32" => Some(32),
         "u64" | "i64" | "f64" => Some(64),
         "u128" | "i128" => Some(128),
         "usize" => Some(std::mem::size_of::<usize>()),
@@ -68,7 +103,6 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
 
         // Parse input
     let original_struct = parse_macro_input!(input as DeriveInput);
-    //println!("{:#?}", original_struct);
 
         // Create list of syn::Fields's
     let fields = if let syn::Data::Struct(syn::DataStruct {
@@ -105,10 +139,8 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
     } else if data_size > 128 {
         panic!("Fields in struct cant be packed in a unsigned integer! Max bit size of fields is 128, actual: {}", struct_size);
     }
-    println!("data_size: {}", data_size);
 
     let data_field_type = syn::Ident::new(&format!("u{}", data_size), Span::call_site());
-
 
     let pack_impl = fields.iter().enumerate().map(|(i, field)|
         {
@@ -119,23 +151,60 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
                 panic!("Macro does not support unnamed types!");
             };
 
-            let ty_size = primitive_to_size(&field.ty);
+            let ty = &field.ty;
+
+            let ty_size = primitive_to_size(ty);
             let ty_size = if let Some(integer) = ty_size {
                 integer
             } else {
                 panic!("Couldent find type size!");
             };
 
-            eprintln!("{}", ty_size);
-
-            if i == 0{
-                quote! {
-                    packed.data |= self.#field_ident as #data_field_type;
+            if ty_is_float(&ty) {
+                let float_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
+                if i == 0{
+                    quote! {
+                        packed.data |= #float_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
+                    }
+                } else {
+                    quote! {
+                        packed.data <<= #ty_size;
+                        packed.data |= #float_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
+                    }
+                }
+            } else if ty_is_char(&ty) {
+                if i == 0{
+                    quote! {
+                        packed.data |= u32::from(self.#field_ident) as #data_field_type;
+                    }
+                } else {
+                    quote! {
+                        packed.data <<= #ty_size;
+                        packed.data |= u32::from(self.#field_ident) as #data_field_type;
+                    }
+                }
+            } else if ty_is_integer(&ty) {
+                let integer_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
+                if i == 0{
+                    quote! {
+                        packed.data |= #integer_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
+                    }
+                } else {
+                    quote! {
+                        packed.data <<= #ty_size;
+                        packed.data |= #integer_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
+                    }
                 }
             } else {
-                quote! {
-                    packed.data <<= #ty_size;
-                    packed.data |= self.#field_ident as #data_field_type;
+                if i == 0{
+                    quote! {
+                        packed.data |= self.#field_ident as #data_field_type;
+                    }
+                } else {
+                    quote! {
+                        packed.data <<= #ty_size;
+                        packed.data |= self.#field_ident as #data_field_type;
+                    }
                 }
             }
         }
@@ -159,122 +228,92 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
                 panic!("Couldent find type size!");
             };
 
-            if i == fields.len() - 1 {
-                quote! {
-                    unpacked.#field_ident |= data_copy as #ty;
+            if ty_is_float(&ty) {
+                let float_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
+
+                if i == fields.len() - 1 {
+                    quote! {
+                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #float_as_unsigned_ident).to_ne_bytes());
+                    }
+                } else {
+                    quote! {
+                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #float_as_unsigned_ident).to_ne_bytes());
+                        data_copy >>= #ty_size;
+                    }
+                }
+            } else if ty_is_char(&ty) {
+                if i == fields.len() - 1 {
+                    quote! {
+                        unpacked.#field_ident = char::from_u32_unchecked(data_copy as u32);
+                    }
+                } else {
+                    quote! {
+                        unpacked.#field_ident = char::from_u32_unchecked(data_copy as u32);
+                        data_copy >>= #ty_size;
+                    }
+                }
+            } else if ty_is_integer(&ty) {
+                let integer_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
+                if i == fields.len() - 1 {
+                    quote! {
+                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #integer_as_unsigned_ident).to_ne_bytes());
+                    }
+                } else {
+                    quote! {
+                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #integer_as_unsigned_ident).to_ne_bytes());
+                        data_copy >>= #ty_size;
+                    }
                 }
             } else {
-                quote! {
-                    unpacked.#field_ident |= data_copy as #ty;
-                    data_copy >>= #ty_size;
+                if i == fields.len() - 1 {
+                    quote! {
+                        unpacked.#field_ident = data_copy as #ty;
+                    }
+                } else {
+                    quote! {
+                        unpacked.#field_ident = data_copy as #ty;
+                        data_copy >>= #ty_size;
+                    }
                 }
             }
         }
     );
 
-    let ret = quote!{
-        #original_struct
-
-        #[derive(Copy, Clone)]
-        struct SomeStructPacked {
-            data: #data_field_type
-        }
-
-        impl SomeStruct {
-            pub fn pack(&self) -> SomeStructPacked {
-                let mut packed = SomeStructPacked{data: 0};
-
-                #(#pack_impl)*
-
-                return packed;
-            }
-        }
-
-        impl SomeStructPacked {
-            pub fn unpack(&self) -> SomeStruct {
-                let mut data_copy = self.data;
-                let mut unpacked = SomeStruct::default();
-                #(#unpack_impl)*
-                return unpacked;
-            }
-        }
-    };
-
-    eprintln!("\n\n{}", ret);
+    let original_struct_ident = &original_struct.ident;
+    let packed_struct_ident = syn::Ident::new(&format!("{}Packed", original_struct.ident.to_string()), Span::call_site());
 
     TokenStream::from(
-        ret
-    ).into()
+        quote!{
+            #original_struct
 
-
-
-    /*let args = parse_macro_input!(args as AttributeArgs);
-    let input = parse_macro_input!(input as DeriveInput);
-
-    eprintln!("{:#?}", input);
-    let mut fieldBitsSize = 0;
-
-    let fields = if let syn::Data::Struct(syn::DataStruct {
-                        fields: syn::Fields::Named(syn::FieldsNamed {ref named, ..}), ..})
-                 = input.data
-    {
-        named
-    } else {
-        unimplemented!();
-    };
-
-    let mut fields_types = Vec::new();
-
-    for field in fields {
-        let field_ident = if let
-            syn::Field{
-                // Match field_ident
-                    ident: Some(ref field_ident),
-                // Match type_ident
-                    ty: syn::Type::Path(syn::TypePath{
-                        path: syn::Path{segments, ..},
-                        ..})
-            , ..} = field
-            {
-                (field_ident, segments)
-            } else {
-                unimplemented!();
-            };
-        fields_types.push(field_ident);
-    }
-
-    eprintln!("fields_types len: {}", fields_types.len());
-
-    for (field_name, field_type) in fields_types {
-        eprintln!("Field name: {:?}, Field type: {:?}", field_name, field_type);
-    }
-
-    /*for field in fields {
-        fields_types.push(
-            if let syn::Field{ty: syn::TypePath{path: syn::Path{segments: syn::PathSegment{ident: syn::Ident{ref ident, ..}, ..}, ..}, ..}, ..} = field
-            {
-                ident
-            } else
-            {
-                unimplemented!();
+            #[derive(Copy, Clone)]
+            struct #packed_struct_ident {
+                data: #data_field_type
             }
-        );
-    }
 
-    for field_type in fields_types {
-        println!("type: {}", field_type);
-    }*/
+            impl #original_struct_ident {
+                pub fn pack(&self) -> #packed_struct_ident {
+                    let mut packed = #packed_struct_ident{data: 0};
 
-    //println!("size: {}", fields.length());
+                    unsafe {
+                        #(#pack_impl)*
+                    }
 
-    /*for field in fields {
+                    return packed;
+                }
+            }
 
+            impl #packed_struct_ident {
+                pub fn unpack(&self) -> #original_struct_ident {
+                    let mut data_copy = self.data;
+                    let mut unpacked = #original_struct_ident::default();
 
-        println!("{}", ty_size);
-    }*/
-
-    TokenStream::from(quote!{struct SomeStruct {
-        #fields
-    }}).into()*/
-
+                    unsafe {
+                        #(#unpack_impl)*
+                    }
+                    return unpacked;
+                }
+            }
+        }
+    ).into()
 }

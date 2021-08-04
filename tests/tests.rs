@@ -1,26 +1,69 @@
 use struct_packer::{pack_struct};
 
 #[test]
-fn pack_unpack_single_u8()
+fn pack_unpack_single_unsigned()
 {
     #[pack_struct]
-    #[derive(Default, Debug)]
-    struct SomeStruct {
-        a: u8,
-        b: u16,
-        d: u32
+    #[derive(Default)]
+    struct TestStructA {
+        a: u8
     }
 
-    let s: SomeStruct = SomeStruct{a: 15, b: 123, d: 23363};
-    let s_packed: SomeStructPacked = s.pack();
-    let s_unpacked: SomeStruct = s_packed.unpack();
+    let s: TestStructA = TestStructA{a: 15};
+    let s_packed: TestStructAPacked = s.pack();
+    let s_unpacked: TestStructA = s_packed.unpack();
 
-    eprintln!("Before pack: {:?}", s);
-    eprintln!("Packed: {}", s_packed.data);
-    eprintln!("Unpacked: {:?}", s_unpacked);
-
+    assert_eq!(s.a, s_unpacked.a);
+    assert_eq!(1, std::mem::size_of::<TestStructAPacked>());
 }
 
+#[test]
+fn pack_unpack_multiple_unsigned()
+{
+    #[pack_struct]
+    #[derive(Default)]
+    struct TestStructB {
+        a: u8,
+        b: u32,
+        c: u8,
+        d: u16
+    }
+
+    let s: TestStructB = TestStructB{a: 15, b: 123534, c: 213, d: 64253};
+    let s_packed: TestStructBPacked = s.pack();
+    let s_unpacked: TestStructB = s_packed.unpack();
+
+    assert_eq!(s.a, s_unpacked.a);
+    assert_eq!(s.b, s_unpacked.b);
+    assert_eq!(s.c, s_unpacked.c);
+    assert_eq!(s.d, s_unpacked.d);
+    assert_eq!(8, std::mem::size_of::<TestStructBPacked>());
+}
+
+#[test]
+fn pack_unpack_multiple_mixed()
+{
+    #[pack_struct]
+    #[derive(Default)]
+    struct TestStructC {
+        a: u8,
+        b: char,
+        c: i32,
+        d: i16,
+        e: f32
+    }
+
+    let s: TestStructC = TestStructC{a: 15, b: 'b', c: -312, d: 23124, e: 15.4};
+    let s_packed: TestStructCPacked = s.pack();
+    let s_unpacked: TestStructC = s_packed.unpack();
+
+    assert_eq!(s.a, s_unpacked.a);
+    assert_eq!(s.b, s_unpacked.b);
+    assert_eq!(s.c, s_unpacked.c);
+    assert_eq!(s.d, s_unpacked.d);
+    assert_eq!(s.e, s_unpacked.e);
+    assert_eq!(16, std::mem::size_of::<TestStructCPacked>());
+}
 
 // Test primitive types
     // Test packing and unpacking and that values remain the same: one unsigned integer field
