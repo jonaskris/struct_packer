@@ -49,11 +49,11 @@ fn pack_unpack_multiple_mixed()
         a: u8,
         b: char,
         c: i32,
-        d: i16,
+        d: bool,
         e: f32
     }
 
-    let s: TestStructC = TestStructC{a: 15, b: 'b', c: -312, d: 23124, e: 15.4};
+    let s: TestStructC = TestStructC{a: 15, b: 'b', c: -312, d: true, e: 15.4};
     let s_packed: TestStructCPacked = s.pack();
     let s_unpacked: TestStructC = s_packed.unpack();
 
@@ -65,25 +65,36 @@ fn pack_unpack_multiple_mixed()
     assert_eq!(16, std::mem::size_of::<TestStructCPacked>());
 }
 
-// Test primitive types
-    // Test packing and unpacking and that values remain the same: one unsigned integer field
-    // Test packing and unpacking and that values remain the same: multiple unsigned integer fields
-    // Test packing and unpacking and that values remain the same: multiple non-unsigned integer fields
+#[test]
+fn pack_unpack_multiple_bool()
+{
+    #[pack_struct]
+    #[derive(Default)]
+    struct TestStructD {
+        a: bool,
+        b: bool,
+        c: bool,
+        d: bool,
+        e: bool
+    }
 
-// Test enums
-    // Test packing and unpacking and that values remain the same: one enum field
-    // Test packing and unpacking and that values remain the same: multiple enum fields
+    let s: TestStructD = TestStructD{a: true, b: false, c: true, d: true, e: false};
+    let s_packed: TestStructDPacked = s.pack();
+    let s_unpacked: TestStructD = s_packed.unpack();
+
+    assert_eq!(s.a, s_unpacked.a);
+    assert_eq!(s.b, s_unpacked.b);
+    assert_eq!(s.c, s_unpacked.c);
+    assert_eq!(s.d, s_unpacked.d);
+    assert_eq!(s.e, s_unpacked.e);
+    assert_eq!(1, std::mem::size_of::<TestStructDPacked>());
+}
+
 
 // Test failure conditions
     // Test that compilation fails if all fields cant be packed into one field due to too big size
     // Test that compilation fails using collection types
     // Test that compilation fails using non-value fields such as references or pointers
-
-// Test recursion
-    // Test recursive structs
-    // Test recursive enums
-    // Test recursive and non-recursive structs
-    // test recursive and non-recursive enums
 
 // Test packing order
     // Test that fields first-last are packed in order most_significant_bits - least_significant_bits

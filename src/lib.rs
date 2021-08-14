@@ -5,43 +5,7 @@ use quote::quote;
 use syn::{parse_macro_input, AttributeArgs, DeriveInput};
 use proc_macro2::{Span};
 
-fn ty_is_float(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
-        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
-            ident.to_string().contains('f')
-        } else {
-            false
-        }
-    } else {
-        false
-    }
-}
-
-fn ty_is_integer(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
-        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
-            ident.to_string().contains('i')
-        } else {
-            false
-        }
-    } else {
-        false
-    }
-}
-
-fn ty_is_char(ty: &syn::Type) -> bool {
-    if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
-        if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
-            ident.to_string().contains("char")
-        } else {
-            false
-        }
-    } else {
-        false
-    }
-}
-
-fn field_to_ty_ident(ty: &syn::Type) -> Option<&syn::Ident>{
+fn ty_to_ident(ty: &syn::Type) -> Option<&syn::Ident>{
     if let syn::Type::Path(syn::TypePath{path: syn::Path{ref segments, ..}, ..}) = ty {
         if let Some(syn::PathSegment{ref ident, ..}) = segments.last() {
             Some(ident)
@@ -54,7 +18,7 @@ fn field_to_ty_ident(ty: &syn::Type) -> Option<&syn::Ident>{
 }
 
 fn primitive_to_size(ty: &syn::Type) -> Option<usize> {
-    let ty_ident = if let Some(ident) = field_to_ty_ident(&ty) {
+    let ty_ident = if let Some(ident) = ty_to_ident(&ty) {
         ident
     } else {
         return None;
@@ -75,36 +39,10 @@ fn primitive_to_size(ty: &syn::Type) -> Option<usize> {
 
 #[proc_macro_attribute]
 pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    // Parse args (TODO)
-
     // Parse input
-        // Create list of syn::Field's
-            // TODO: support unnamed fields (tuple structs)
-
-    // Write the type/name of data field which holds all the fields in the original struct.
-        // Type should be unsigned integer, with bits being size_sum rounded up to 2^x, maximum u128.
-        // Return compile error if size exceeds 128 bits
-
-    // Write the packing logic
-
-    // Write the unpacking logic
-
-    // Derive from Copy, Clone, Debug
-
-    // Implement PartialEq and PartialOrd
-
-    // Write the final result to token stream
-        // Write the original struct, OriginalStruct
-        // Write the new struct, OriginalStructPacked
-        // Write OriginalStruct implementation for packing
-        // Write OriginalStructPacked implementation for unpacking
-        // Write OriginalStructPacked implementation of PartialEq and PartialOrd
-
-
-        // Parse input
     let original_struct = parse_macro_input!(input as DeriveInput);
 
-        // Create list of syn::Fields's
+    // Create list of syn::Fields's
     let fields = if let syn::Data::Struct(syn::DataStruct {
                         fields: syn::Fields::Named(syn::FieldsNamed {ref named, ..}), ..})
                  = original_struct.data
@@ -131,13 +69,14 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
             }
         }
     ).sum();
+        // Find next higher(or equal) power of 2
     let mut data_size: usize = usize::pow(2, ((struct_size as f64).ln()/2f64.ln()).ceil() as u32);
 
 
     if data_size < 8 {
         data_size = 8;
     } else if data_size > 128 {
-        panic!("Fields in struct cant be packed in a unsigned integer! Max bit size of fields is 128, actual: {}", struct_size);
+        panic!("Fields in struct cannot be packed in a unsigned integer! Max bit size of fields is 128, actual: {}", struct_size);
     }
 
     let data_field_type = syn::Ident::new(&format!("u{}", data_size), Span::call_site());
@@ -160,51 +99,24 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
                 panic!("Couldent find type size!");
             };
 
-            if ty_is_float(&ty) {
-                let float_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
-                if i == 0{
-                    quote! {
-                        packed.data |= #float_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
-                    }
+            let ty_as_unsigned_integer = if let Some(ident) = ty_to_ident(&ty) {
+                if ident.to_string() == "bool" {
+                    syn::Ident::new(&format!("u{}", 8), Span::call_site())
                 } else {
-                    quote! {
-                        packed.data <<= #ty_size;
-                        packed.data |= #float_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
-                    }
-                }
-            } else if ty_is_char(&ty) {
-                if i == 0{
-                    quote! {
-                        packed.data |= u32::from(self.#field_ident) as #data_field_type;
-                    }
-                } else {
-                    quote! {
-                        packed.data <<= #ty_size;
-                        packed.data |= u32::from(self.#field_ident) as #data_field_type;
-                    }
-                }
-            } else if ty_is_integer(&ty) {
-                let integer_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
-                if i == 0{
-                    quote! {
-                        packed.data |= #integer_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
-                    }
-                } else {
-                    quote! {
-                        packed.data <<= #ty_size;
-                        packed.data |= #integer_as_unsigned_ident::from_ne_bytes(self.#field_ident.to_ne_bytes()) as #data_field_type;
-                    }
+                    syn::Ident::new(&format!("u{}", ty_size), Span::call_site())
                 }
             } else {
-                if i == 0{
-                    quote! {
-                        packed.data |= self.#field_ident as #data_field_type;
-                    }
-                } else {
-                    quote! {
-                        packed.data <<= #ty_size;
-                        packed.data |= self.#field_ident as #data_field_type;
-                    }
+                panic!("Couldent find type ident!");
+            };
+
+            if i == 0{
+                quote! {
+                    packed.data |= std::mem::transmute_copy::<#ty, #ty_as_unsigned_integer>(&self.#field_ident) as #data_field_type;
+                }
+            } else {
+                quote! {
+                    packed.data <<= #ty_size;
+                    packed.data |= std::mem::transmute_copy::<#ty, #ty_as_unsigned_integer>(&self.#field_ident) as #data_field_type;
                 }
             }
         }
@@ -228,52 +140,24 @@ pub fn pack_struct(_args: proc_macro::TokenStream, input: proc_macro::TokenStrea
                 panic!("Couldent find type size!");
             };
 
-            if ty_is_float(&ty) {
-                let float_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
-
-                if i == fields.len() - 1 {
-                    quote! {
-                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #float_as_unsigned_ident).to_ne_bytes());
-                    }
+            let ty_as_unsigned_integer = if let Some(ident) = ty_to_ident(&ty) {
+                if ident.to_string() == "bool" {
+                    syn::Ident::new(&format!("u{}", 8), Span::call_site())
                 } else {
-                    quote! {
-                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #float_as_unsigned_ident).to_ne_bytes());
-                        data_copy >>= #ty_size;
-                    }
-                }
-            } else if ty_is_char(&ty) {
-                if i == fields.len() - 1 {
-                    quote! {
-                        unpacked.#field_ident = char::from_u32_unchecked(data_copy as u32);
-                    }
-                } else {
-                    quote! {
-                        unpacked.#field_ident = char::from_u32_unchecked(data_copy as u32);
-                        data_copy >>= #ty_size;
-                    }
-                }
-            } else if ty_is_integer(&ty) {
-                let integer_as_unsigned_ident = syn::Ident::new(&format!("u{}", ty_size), Span::call_site());
-                if i == fields.len() - 1 {
-                    quote! {
-                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #integer_as_unsigned_ident).to_ne_bytes());
-                    }
-                } else {
-                    quote! {
-                        unpacked.#field_ident = #ty::from_ne_bytes((data_copy as #integer_as_unsigned_ident).to_ne_bytes());
-                        data_copy >>= #ty_size;
-                    }
+                    syn::Ident::new(&format!("u{}", ty_size), Span::call_site())
                 }
             } else {
-                if i == fields.len() - 1 {
-                    quote! {
-                        unpacked.#field_ident = data_copy as #ty;
-                    }
-                } else {
-                    quote! {
-                        unpacked.#field_ident = data_copy as #ty;
-                        data_copy >>= #ty_size;
-                    }
+                panic!("Couldent find type ident!");
+            };
+
+            if i == fields.len() - 1 {
+                quote! {
+                    unpacked.#field_ident = std::mem::transmute_copy::<#ty_as_unsigned_integer, #ty>(&(data_copy as #ty_as_unsigned_integer));
+                }
+            } else {
+                quote! {
+                    unpacked.#field_ident = std::mem::transmute_copy::<#ty_as_unsigned_integer, #ty>(&(data_copy as #ty_as_unsigned_integer));
+                    data_copy >>= #ty_size;
                 }
             }
         }
