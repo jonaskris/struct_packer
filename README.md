@@ -1,4 +1,63 @@
-Work in progress
+## Example
+```
+#[pack_struct]
+struct MyStruct {
+  a: u16, // Most significant
+  b: u8,
+  c: u8,
+  d: u8 // Least significant
+}
+```
+Using the macro, the fields in this struct can be packed into a single unsigned integer. In this specific case the layout would be as follows:
+
+<table style="border-collapse: collapse; width: 100%; border: 1px solid;">
+  <tr>
+    <td>Least significant</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td>Most significant</td>
+  <tr>
+    <td style="width: 12.5%; border: 1px solid;">Empty (8 bit)</td>
+    <td style="width: 12.5%; border: 1px solid;">D (8 bit)</td>
+    <td style="width: 12.5%; border: 1px solid;">C (8 bit)</td>
+    <td style="width: 12.5%; border: 1px solid;">B (8 bit)</td>
+    <td style="width: 25%; border: 1px solid;">A (16 bit)</td>
+  </tr>
+</table>
+
+The total bitsize of this struct is 40 bits, which can be packed into a 64 bit unsigned integer. (The next power of 2).
+If the total bitsize is smaller or equal to 32, it would be packed into a 32 bit unsigned integer, or if <= 16; 16 etc..
+Each field is packed into the unsigned integer in order.
+
+The macro defines this new struct and functions:
+
+```
+struct MyStructPacked {
+ data: u64
+}
+
+impl MyStruct {
+ pub fn pack() -> DrawKeyPacked {
+  -- Snip --
+ }
+}
+
+impl MyStructPacked {
+ pub fn unpack() -> DrawKey {
+  -- Snip --
+ }
+}
+```
+
+The [pack_struct] procedural macro, automatically provides a pack() method which returns a struct of the same name appended by "Packed", so "DrawKeyPacked". DrawKeyPacked has a unpack() method which reverses this process, providing the original struct with the same values from before packing.
+
+## Known limitations
+* Does not support fields having types other than the Rust primitive types:
+  * Bool, i8, u8, i16, u16, i32, u32, f32, char, i64, u64, f64, i128, u128, usize, isize.
+  * This also means a field cannot be a struct even though that struct only contains these primitive types.
+* Does not support fields with lifetimes, types with typeparameters (generics), or other complex types.
+
 
 ## Explanation/Motivation
 In OpenGL theres a concept of "drawkeys" which encapsulates the information needed to draw an object to screen.
@@ -7,7 +66,7 @@ To draw an object to screen, multiple variables are needed, such as which shader
 
 Theres also the concept of state change cost, where for example changing the shader is one of the most expensive state changes, which material to use is the second most costly state change and so on...
 
-When some state is not common between all objects, we need to prioritize which order to draw the objects, where expensive states should be changed least. To do this, the macro packs each field into the key in order of first-last field to most_significant_bits-least_siginificant_bits in the packed key.
+When some state is not common between all objects, we need to prioritize which order to draw the objects, where expensive states should be changed least. To do this, the macro packs each field into the key in order of first -> last field to most_significant_bits -> least_significant_bits in the packed key.
 
 The cost associated with each state change in OpenGL, in decreasing order is as follows:
   * Render target
@@ -30,44 +89,7 @@ In a drawkey, the most expensive state changes are placed in the most significan
 
 When sorted, the array of drawkeys will be ordered in a way where expensive state changes are minimized.
 
-## Example usage
-```
-#[pack_struct]
-struct DrawKey {
-  render_target: bool, // Most expensive
-  program: u8,
-  material: u8,
-  mesh: u8,
-  uniform_update_buffer: u8 // Least expensive
-}
-```
-
-The total bitsize of this struct is 38, which can be packed into a 64 bit unsigned integer. (The next power of 2).
-If the total bitsize is smaller or equal to 32, it would be packed into a 32 bit unsigned integer, or if <= 16; 16 etc..
-Each field is packed into the unsigned integer in order, so render_target will be packed first into the most significant bits, program will be packed into the second most significant bits etc.
-
-The macro defines this new struct and functions:
-
-```
-struct DrawKeyPacked {
- data: u64
-}
-
-impl DrawKey {
- pub fn pack() -> DrawKeyPacked {
-  -- Snip --
- }
-}
-
-impl DrawKeyPacked {
- pub fn unpack() -> DrawKey {
-  -- Snip --
- }
-}
-```
-
-The [pack_struct] procedural macro, automatically provides a pack() method which returns a struct of the same name appended by "Packed", so "DrawKeyPacked". DrawKeyPacked has a unpack() method which reverses this process, providing the original struct with the same values from before packing.
-
+## Example usage in graphical applications
 Here's an example of how this can be used
 ```
 pub fn set_changed_state(current_drawkey: &DrawKey, last_drawkey: Option<&DrawKey>) {
@@ -96,6 +118,8 @@ pub fn draw_to_screen(objects: &Vec<RenderableObjects>) {
 }
 ```
 
-The reason we dont just implement sorting for DrawKey, is because its WAAAAAY faster to sort unsigned integers, as it requires only a single comparison. This speed increase is important as sorting the drawkeys and drawing the renderable objects to screen should happen 60+ times each second. 
+The reason we dont just implement sorting for DrawKey, is because its way faster to sort unsigned integers, as it requires only a single comparison. This speed increase is important as sorting the drawkeys and drawing the renderable objects to screen should happen 60+ times each second. 
 
-The definition of the drawkey will also change very often during development as new features are added, which can introduce errors if not careful implementing the packing functionality. The macro automatically defines the packed drawkey only from which field the original drawkey has, and so reduces development time.
+The definition of the drawkey will potentially change often during development as new features are added, which can introduce errors if not careful implementing the packing functionality. The macro automatically defines the packed drawkey only from which field the original drawkey has, and so reduces development time.
+
+For another explanation of drawkeys, check out https://realtimecollisiondetection.net/blog/?p=86 
